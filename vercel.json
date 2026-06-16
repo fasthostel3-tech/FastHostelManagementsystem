@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "buildCommand": "bash vercel-build.sh",
+  "buildCommand": null,
   "outputDirectory": "build/web",
-  "installCommand": "echo 'Skipping default install'",
+  "installCommand": "echo 'Using pre-built Flutter web output'",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]
