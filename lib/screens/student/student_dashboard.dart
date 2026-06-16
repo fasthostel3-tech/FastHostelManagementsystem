@@ -52,10 +52,6 @@ class StudentDashboard extends ConsumerWidget {
         ),
         actions: [
           IconButton(
-            icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
-            onPressed: () => ref.read(themeModeProvider.notifier).toggleTheme(),
-          ),
-          IconButton(
             icon: const Icon(Icons.notifications_outlined),
             onPressed: () => context.push('/student/dashboard/notifications'),
           ),
@@ -67,10 +63,22 @@ class StudentDashboard extends ConsumerWidget {
             onSelected: (value) async {
               if (value == 'logout') {
                 await ref.read(currentUserProvider.notifier).signOut();
+              } else if (value == 'theme') {
+                ref.read(themeModeProvider.notifier).toggleTheme();
               }
             },
-            itemBuilder: (context) => const [
+            itemBuilder: (context) => [
               PopupMenuItem(
+                value: 'theme',
+                child: Row(
+                  children: [
+                    Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
+                    const SizedBox(width: 8),
+                    Text(isDarkMode ? 'Light Mode' : 'Dark Mode'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
                 value: 'logout',
                 child: Row(
                   children: [
