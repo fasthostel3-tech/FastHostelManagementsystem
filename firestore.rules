@@ -1,0 +1,183 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ── Profiles ────────────────────────────────────────────────────────────
+    match /profiles/{userId} {
+      allow read:  if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+
+      match /notifications/{docId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+      match /complaints/{docId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+      match /messAttendance/{docId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+      match /gymRegistrations/{docId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+      match /messRegistrations/{docId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // ── Payments ────────────────────────────────────────────────────────────
+    match /payments/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /feePayments/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /feeChallans/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ── Hostel Applications ─────────────────────────────────────────────────
+    match /hostelApplications/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ── Gym Registrations ───────────────────────────────────────────────────
+    match /gymRegistrations/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ── Mess ────────────────────────────────────────────────────────────────
+    match /mess_bills/{docId} {
+      allow read:  if isAuthenticated();
+      // Students write their OWN bill (addToBill runs client-side;
+      // the document ID equals the studentId).
+      allow write: if isAdmin() ||
+                      (request.auth != null && request.auth.uid == docId);
+
+      // billed_meals subcollection — used for deduplication
+      match /billed_meals/{mealId} {
+        allow read, write: if isAdmin() ||
+                               (request.auth != null && request.auth.uid == docId);
+      }
+    }
+
+    match /mess_menus/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /messAttendance/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /messRegistrations/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ── Hostels / Halls / Floors / Rooms ───────────────────────────────────
+    match /hostels/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /halls/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /floors/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /rooms/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAdmin();
+      match /beds/{bedId} {
+        allow read:  if isAuthenticated();
+        allow write: if isAdmin();
+      }
+    }
+
+    // Top-level beds collection (used by HallFloorRoomService)
+    match /beds/{bedId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Room requests (created by students, approved by admin)
+    match /roomRequests/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ── Complaints ──────────────────────────────────────────────────────────
+    match /complaints/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ── Notifications ───────────────────────────────────────────────────────
+    match /notifications/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ── Notices ─────────────────────────────────────────────────────────────
+    match /notices/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    match /noticeBoard/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ── Settings (bank details etc.) ────────────────────────────────────────
+    match /settings/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ── Chat Rooms ──────────────────────────────────────────────────────────
+    match /chatRooms/{roomId} {
+      allow read:   if isAuthenticated() &&
+                       request.auth.uid in resource.data.participants;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() &&
+                       request.auth.uid in resource.data.participants;
+      match /messages/{messageId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    // ── Maintenance Requests ────────────────────────────────────────────────
+    match /maintenanceRequests/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+  }
+}

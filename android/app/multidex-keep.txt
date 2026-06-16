@@ -1,0 +1,8 @@
+io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingInitProvider
+io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingPlugin
+io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService
+io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingReceiver
+io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingBackgroundService
+io.flutter.plugins.firebase.messaging.FlutterFirebaseAppRegistrar
+io.flutter.plugins.firebase.messaging.**
+

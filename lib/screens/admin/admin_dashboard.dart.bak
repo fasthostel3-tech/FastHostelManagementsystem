@@ -1,0 +1,663 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
+
+import '../../providers/auth_provider.dart';
+import '../../providers/theme_provider.dart';
+import '../../config/theme.dart';
+import '../../services/hostel_service.dart';
+import '../../models/hostel_model.dart';
+import '../../widgets/status_badge.dart';
+
+class AdminDashboard extends ConsumerWidget {
+  const AdminDashboard({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentUserAsync = ref.watch(currentUserProvider);
+    final isDarkMode = ref.watch(isDarkModeProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Admin Dashboard'),
+        actions: [
+          IconButton(
+            icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
+            onPressed: () => ref.read(themeModeProvider.notifier).toggleTheme(),
+          ),
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              if (value == 'logout') {
+                await ref.read(currentUserProvider.notifier).signOut();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout),
+                    SizedBox(width: 8),
+                    Text('Logout'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      body: currentUserAsync.when(
+        data: (user) {
+          if (user == null) return const Center(child: Text('No user data'));
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _AdminHeader(userName: user.name),
+                const SizedBox(height: 24),
+                const _SectionTitle('System Overview'),
+                const SizedBox(height: 16),
+                const _QuickStatsGrid(),
+                const SizedBox(height: 24),
+                const _SectionTitle('Quick Actions'),
+                const SizedBox(height: 16),
+                const _ManagementModulesGrid(),
+                const SizedBox(height: 24),
+                const _SectionTitle('Analytics'),
+                const SizedBox(height: 16),
+                const _ApplicationStatusChart(),
+                const SizedBox(height: 24),
+                const _SectionTitle('Recent Activity'),
+                const SizedBox(height: 16),
+                const _RecentActivityFeed(),
+                const SizedBox(height: 32),
+              ],
+            ),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
+      ),
+    );
+  }
+}
+
+// ── Section Title ────────────────────────────────────────────────────────────
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.title);
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+    );
+  }
+}
+
+// ── Header ───────────────────────────────────────────────────────────────────
+
+class _AdminHeader extends StatelessWidget {
+  const _AdminHeader({required this.userName});
+  final String userName;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppColors.primary, AppColors.primaryLight],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.admin_panel_settings_rounded,
+                    color: Colors.white, size: 28),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Welcome, ${userName.split(' ').first}',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'FAST Hostel Administration Panel',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.white.withValues(alpha: 0.85),
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Quick Stats Grid ─────────────────────────────────────────────────────────
+
+class _QuickStatsGrid extends ConsumerWidget {
+  const _QuickStatsGrid();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return StreamBuilder<List<HostelApplicationModel>>(
+      stream: ref.watch(hostelServiceProvider).getAllApplications(),
+      builder: (context, appsSnap) {
+        return StreamBuilder<Map<String, dynamic>>(
+          stream: ref.watch(hostelServiceProvider).getOccupancyStatsStream(),
+          builder: (context, statsSnap) {
+            final apps = appsSnap.data ?? [];
+            final totalApps = apps.length;
+            final pendingApps =
+                apps.where((a) => a.status == 'pending').length;
+
+            final stats = statsSnap.data ?? {};
+            final totalRooms = stats.values.fold<int>(
+                0, (sum, s) => sum + (s['totalRooms'] as int? ?? 0));
+            final occupiedRooms = stats.values.fold<int>(
+                0, (sum, s) => sum + (s['occupiedRooms'] as int? ?? 0));
+            final availableRooms = totalRooms - occupiedRooms;
+
+            return GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 1.6,
+              children: [
+                _StatCard(
+                  title: 'Total Applications',
+                  value: '$totalApps',
+                  icon: Icons.list_alt,
+                  color: AppColors.primary,
+                ),
+                _StatCard(
+                  title: 'Pending Reviews',
+                  value: '$pendingApps',
+                  icon: Icons.pending_actions,
+                  color: AppColors.warning,
+                ),
+                _StatCard(
+                  title: 'Active Residents',
+                  value: '$occupiedRooms',
+                  icon: Icons.people_outline,
+                  color: AppColors.success,
+                ),
+                _StatCard(
+                  title: 'Available Rooms',
+                  value: '$availableRooms',
+                  icon: Icons.bed_outlined,
+                  color: AppColors.info,
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const Spacer(),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Management Modules Grid ───────────────────────────────────────────────────
+
+class _ManagementModulesGrid extends StatelessWidget {
+  const _ManagementModulesGrid();
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 3,
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 0.9,
+      children: const [
+        _ModuleCard(
+            title: 'Dashboard',
+            icon: Icons.dashboard_rounded,
+            color: Color(0xFF7C3AED),
+            route: '/admin/dashboard/analytics'),
+        _ModuleCard(
+            title: 'Applications',
+            icon: Icons.assignment,
+            color: AppColors.primary,
+            route: '/admin/dashboard/applications'),
+        _ModuleCard(
+            title: 'Hostels',
+            icon: Icons.business,
+            color: Color(0xFF0D9488),
+            route: '/admin/dashboard/hostel-management'),
+        _ModuleCard(
+            title: 'Complaints',
+            icon: Icons.report_problem,
+            color: AppColors.warning,
+            route: '/admin/dashboard/complaints'),
+        _ModuleCard(
+            title: 'Mess Schedule',
+            icon: Icons.restaurant_menu,
+            color: AppColors.success,
+            route: '/admin/dashboard/mess-management'),
+        _ModuleCard(
+            title: 'Gym',
+            icon: Icons.fitness_center,
+            color: AppColors.error,
+            route: '/admin/dashboard/gym-management'),
+        _ModuleCard(
+            title: 'Mess Billing',
+            icon: Icons.receipt_long,
+            color: Color(0xFF7C3AED),
+            route: '/admin/dashboard/mess-billing'),
+        _ModuleCard(
+            title: 'Halls',
+            icon: Icons.meeting_room,
+            color: AppColors.info,
+            route: '/admin/dashboard/halls'),
+        _ModuleCard(
+            title: 'Notices',
+            icon: Icons.announcement,
+            color: Color(0xFF0D9488),
+            route: '/admin/dashboard/notice-board'),
+        _ModuleCard(
+            title: 'Fee Payments',
+            icon: Icons.payments,
+            color: Colors.green,
+            route: '/admin/dashboard/fee-payments'),
+        _ModuleCard(
+            title: 'Bank Settings',
+            icon: Icons.account_balance,
+            color: Colors.teal,
+            route: '/admin/dashboard/bank-settings'),
+        _ModuleCard(
+            title: 'Clear Data',
+            icon: Icons.delete_sweep,
+            color: Colors.red,
+            route: '/admin/dashboard/db-management'),
+      ],
+    );
+  }
+}
+
+class _ModuleCard extends StatelessWidget {
+  const _ModuleCard({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.route,
+  });
+
+  final String title;
+  final IconData icon;
+  final Color color;
+  final String route;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => context.push(route),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Application Status Chart ──────────────────────────────────────────────────
+
+class _ApplicationStatusChart extends ConsumerWidget {
+  const _ApplicationStatusChart();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return StreamBuilder<List<HostelApplicationModel>>(
+      stream: ref.watch(hostelServiceProvider).getAllApplications(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final apps = snapshot.data ?? [];
+        if (apps.isEmpty) {
+          return const Card(
+              child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: Text('No application data available'))));
+        }
+
+        int pending = 0;
+        int challan = 0;
+        int roomAssigned = 0;
+        int rejected = 0;
+
+        for (final app in apps) {
+          if (app.status == 'pending') {
+            pending++;
+          } else if (app.status == 'fee_challan_generated' ||
+              app.status == 'fee_confirmed') {
+            challan++;
+          } else if (app.status == 'room_assigned') {
+            roomAssigned++;
+          } else if (app.status == 'rejected') {
+            rejected++;
+          }
+        }
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Application Distribution',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  height: 200,
+                  child: PieChart(
+                    PieChartData(
+                      sectionsSpace: 2,
+                      centerSpaceRadius: 40,
+                      sections: [
+                        PieChartSectionData(
+                          color: AppColors.warning,
+                          value: pending.toDouble(),
+                          title: '$pending',
+                          radius: 50,
+                          titleStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
+                        ),
+                        PieChartSectionData(
+                          color: AppColors.info,
+                          value: challan.toDouble(),
+                          title: '$challan',
+                          radius: 50,
+                          titleStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
+                        ),
+                        PieChartSectionData(
+                          color: AppColors.success,
+                          value: roomAssigned.toDouble(),
+                          title: '$roomAssigned',
+                          radius: 50,
+                          titleStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
+                        ),
+                        if (rejected > 0)
+                          PieChartSectionData(
+                            color: AppColors.error,
+                            value: rejected.toDouble(),
+                            title: '$rejected',
+                            radius: 50,
+                            titleStyle: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _LegendItem(color: AppColors.warning, label: 'Pending'),
+                    SizedBox(width: 8),
+                    _LegendItem(color: AppColors.info, label: 'Fee Stage'),
+                    SizedBox(width: 8),
+                    _LegendItem(color: AppColors.success, label: 'Assigned'),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  const _LegendItem({required this.color, required this.label});
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(width: 12, height: 12, color: color),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(fontSize: 11)),
+      ],
+    );
+  }
+}
+
+// ── Recent Activity Feed ──────────────────────────────────────────────────────
+
+class _RecentActivityFeed extends ConsumerWidget {
+  const _RecentActivityFeed();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return StreamBuilder<List<HostelApplicationModel>>(
+      stream: ref.watch(hostelServiceProvider).getAllApplications(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final apps = snapshot.data ?? [];
+        if (apps.isEmpty) {
+          return const Card(
+              child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: Text('No recent activity'))));
+        }
+
+        apps.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        final recentApps = apps.take(5).toList();
+
+        return Card(
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: recentApps.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final app = recentApps[index];
+              return ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.person_outline,
+                      color: AppColors.primary, size: 20),
+                ),
+                title: Text(
+                  app.studentName,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+                subtitle: Text(
+                  DateFormat('MMM dd, yyyy • hh:mm a').format(app.createdAt),
+                  style: const TextStyle(fontSize: 12),
+                ),
+                trailing: StatusBadge(
+                  label: _formatStatus(app.status),
+                  type: _getStatusType(app.status),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  String _formatStatus(String status) {
+    switch (status) {
+      case 'pending':
+        return 'Pending';
+      case 'fee_challan_generated':
+        return 'Fee Gen';
+      case 'fee_confirmed':
+        return 'Fee Conf';
+      case 'room_assigned':
+        return 'Assigned';
+      case 'rejected':
+        return 'Rejected';
+      default:
+        return status.toUpperCase();
+    }
+  }
+
+  StatusType _getStatusType(String status) {
+    switch (status) {
+      case 'room_assigned':
+      case 'fee_confirmed':
+        return StatusType.success;
+      case 'rejected':
+        return StatusType.error;
+      case 'fee_challan_generated':
+        return StatusType.info;
+      default:
+        return StatusType.warning;
+    }
+  }
+}
